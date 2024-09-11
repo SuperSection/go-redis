@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"log/slog"
 	"net"
@@ -53,8 +52,17 @@ func (server *Server) Start() error {
 }
 
 /* handle incoming messages */
-func (server *Server) handleRawMessage(rawMsg []byte) error  {
-	fmt.Println(string(rawMsg))
+func (server *Server) handleRawMessage(rawMsg []byte) error {
+	cmd, err := parseCommand(string(rawMsg))
+	if err != nil {
+		return err
+	}
+
+	switch v := cmd.(type) {
+	case SetCommand:
+		slog.Info("somebody wants to set a key into the hash table", "key", v.key, "val", v.val)
+	}
+
 	return nil
 }
 
@@ -62,7 +70,7 @@ func (server *Server) handleRawMessage(rawMsg []byte) error  {
 func (server *Server) loop() {
 	for {
 		select {
-		case rawMsg := <- server.msgCh:
+		case rawMsg := <-server.msgCh:
 			if err := server.handleRawMessage(rawMsg); err != nil {
 				slog.Error("raw message error", "err", err)
 			}
@@ -99,7 +107,6 @@ func (server *Server) handleConn(conn net.Conn) {
 		slog.Error("peer read error", "err", err, "remoteAddress", conn.RemoteAddr())
 	}
 }
-
 
 func main() {
 	server := NewServer(Config{})
