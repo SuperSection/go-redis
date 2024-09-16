@@ -17,13 +17,18 @@ type Config struct {
 	ListenAddr string
 }
 
+type Message struct {
+	data []byte
+	peer *Peer
+}
+
 type Server struct {
 	Config
 	peers     map[*Peer]bool
 	listener  net.Listener
 	addPeerCh chan *Peer
 	quitCh    chan struct{}
-	msgCh     chan []byte
+	msgCh     chan Message
 
 	keyval *KeyVal
 }
@@ -39,7 +44,7 @@ func NewServer(config Config) *Server {
 		peers:     make(map[*Peer]bool),
 		addPeerCh: make(chan *Peer),
 		quitCh:    make(chan struct{}),
-		msgCh:     make(chan []byte),
+		msgCh:     make(chan Message),
 		keyval:    NewKeyVal(),
 	}
 }
@@ -60,8 +65,9 @@ func (server *Server) Start() error {
 }
 
 /* handle incoming messages */
-func (server *Server) handleRawMessage(rawMsg []byte) error {
-	cmd, err := parseCommand(string(rawMsg))
+func (server *Server) handleMessage(msg Message) error {
+	// parse the input command
+	cmd, err := parseCommand(string(msg.data))
 	if err != nil {
 		return err
 	}
@@ -69,6 +75,14 @@ func (server *Server) handleRawMessage(rawMsg []byte) error {
 	switch v := cmd.(type) {
 	case SetCommand:
 		return server.keyval.Set(v.key, v.val)
+	case GetCommand:
+		val, ok := server.keyval.Get(v.key)
+		if !ok {
+			return fmt.Errorf("key not found")
+		}
+		if _, err := msg.peer.Send(val); err != nil {
+			slog.Error("peer send error", "err", err)
+		}
 	}
 
 	return nil
@@ -78,8 +92,8 @@ func (server *Server) handleRawMessage(rawMsg []byte) error {
 func (server *Server) loop() {
 	for {
 		select {
-		case rawMsg := <-server.msgCh:
-			if err := server.handleRawMessage(rawMsg); err != nil {
+		case msg := <-server.msgCh:
+			if err := server.handleMessage(msg); err != nil {
 				slog.Error("raw message error", "err", err)
 			}
 		case <-server.quitCh:
@@ -107,10 +121,6 @@ func (server *Server) handleConn(conn net.Conn) {
 	peer := NewPeer(conn, server.msgCh)
 	server.addPeerCh <- peer
 
-	slog.Info("new peer connected", "remoteAddress", conn.RemoteAddr())
-
-	go peer.readLoop()
-
 	if err := peer.readLoop(); err != nil {
 		slog.Error("peer read error", "err", err, "remoteAddress", conn.RemoteAddr())
 	}
@@ -122,18 +132,20 @@ func main() {
 	go func() {
 		log.Fatal(server.Start())
 	}()
-
 	time.Sleep(time.Second)
 
 	client := client.NewClient("localhost:5001")
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		if err := client.Set(context.TODO(), fmt.Sprintf("foo_%d", i), fmt.Sprintf("bar_%d", i)); err != nil {
 			log.Fatal(err)
 		}
+		val, err := client.Get(context.TODO(), fmt.Sprintf("foo_%d", i))
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("got this back:", val)
 	}
-
-	time.Sleep(time.Second)
 
 	fmt.Println(server.keyval.data)
 }
