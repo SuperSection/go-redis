@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"net"
+	"time"
+
+	"github.com/SuperSection/go-redis/client"
 )
 
 const defaultListenAddr = ":5001"
@@ -19,6 +24,8 @@ type Server struct {
 	addPeerCh chan *Peer
 	quitCh    chan struct{}
 	msgCh     chan []byte
+
+	keyval *KeyVal
 }
 
 /* Create new Server instance */
@@ -33,6 +40,7 @@ func NewServer(config Config) *Server {
 		addPeerCh: make(chan *Peer),
 		quitCh:    make(chan struct{}),
 		msgCh:     make(chan []byte),
+		keyval:    NewKeyVal(),
 	}
 }
 
@@ -60,7 +68,7 @@ func (server *Server) handleRawMessage(rawMsg []byte) error {
 
 	switch v := cmd.(type) {
 	case SetCommand:
-		slog.Info("somebody wants to set a key into the hash table", "key", v.key, "val", v.val)
+		return server.keyval.Set(v.key, v.val)
 	}
 
 	return nil
@@ -110,5 +118,22 @@ func (server *Server) handleConn(conn net.Conn) {
 
 func main() {
 	server := NewServer(Config{})
-	log.Fatal(server.Start())
+
+	go func() {
+		log.Fatal(server.Start())
+	}()
+
+	time.Sleep(time.Second)
+
+	client := client.NewClient("localhost:5001")
+
+	for i := 0; i < 10; i++ {
+		if err := client.Set(context.TODO(), fmt.Sprintf("foo_%d", i), fmt.Sprintf("bar_%d", i)); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	time.Sleep(time.Second)
+
+	fmt.Println(server.keyval.data)
 }
