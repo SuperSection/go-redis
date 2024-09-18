@@ -18,7 +18,7 @@ type Config struct {
 }
 
 type Message struct {
-	data []byte
+	cmd  Command
 	peer *Peer
 }
 
@@ -66,13 +66,8 @@ func (server *Server) Start() error {
 
 /* handle incoming messages */
 func (server *Server) handleMessage(msg Message) error {
-	// parse the input command
-	cmd, err := parseCommand(string(msg.data))
-	if err != nil {
-		return err
-	}
 
-	switch v := cmd.(type) {
+	switch v := msg.cmd.(type) {
 	case SetCommand:
 		return server.keyval.Set(v.key, v.val)
 	case GetCommand:
@@ -134,9 +129,13 @@ func main() {
 	}()
 	time.Sleep(time.Second)
 
-	client := client.NewClient("localhost:5001")
+	client, err := client.NewClient("localhost:5001")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	for i := 0; i < 5; i++ {
+		fmt.Println("SET :", fmt.Sprintf("bar_%d", i))
 		if err := client.Set(context.TODO(), fmt.Sprintf("foo_%d", i), fmt.Sprintf("bar_%d", i)); err != nil {
 			log.Fatal(err)
 		}
@@ -144,8 +143,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("got this back:", val)
+		fmt.Println("GET :", val)
 	}
 
-	fmt.Println(server.keyval.data)
 }

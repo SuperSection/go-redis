@@ -22,7 +22,7 @@ type SetCommand struct {
 }
 
 type GetCommand struct {
-	key, val []byte
+	key []byte
 }
 
 func parseCommand(raw string) (Command, error) {
@@ -41,8 +41,6 @@ func parseCommand(raw string) (Command, error) {
 			for _, value := range v.Array() {
 				switch value.String() {
 				case CommandSET:
-					fmt.Printf("%+v\n", v.Array())
-
 					if len(v.Array()) != 3 {
 						return nil, fmt.Errorf("invalid number of variables for SET command")
 					}
@@ -54,8 +52,6 @@ func parseCommand(raw string) (Command, error) {
 					return cmd, nil
 
 				case CommandGET:
-					fmt.Printf("%+v\n", v.Array())
-
 					if len(v.Array()) != 2 {
 						return nil, fmt.Errorf("invalid number of variables for GET command")
 					}
